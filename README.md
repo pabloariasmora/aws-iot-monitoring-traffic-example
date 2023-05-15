@@ -14,7 +14,13 @@ aws cloudformation create-stack --stack-name iot-monitoring-example --template-b
 ```
 
 4. Confirm the email
-5. Find the MQTT Endpoint using MQTT test client
+
+5.   Find the correct endpoint (recommended to use ATS endpoint)
+
+```
+aws iot describe-endpoint —endpoint-type iot:Data-ATS
+```
+   
 6. Validate Connection
 
 ```
