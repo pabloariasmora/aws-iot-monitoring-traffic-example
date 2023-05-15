@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates required AWS resources
+Parameters:
+  CertificateARN:
+    Description: The Amazon Resource Name (ARN) of an existing AWS IoT certificate
+      aws iot create-keys-and-certificate --set-as-active --certificate-pem-outfile certs/certificate.pem.crt --private-key-outfile certs/private.pem.key
+    Type: String
+  EmailNotification:
+    Description: Email to receive SNS Notification
+    Default: Enter Your Email Address
+    Type: String
+Resources:
+  IoTPolicy:
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: iot:Connect
+            Effect: Allow
+            Resource:
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/${AWS::StackName}'
+          - Action: iot:*
+            Effect: Allow
+            Resource:
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${AWS::StackName}'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/test/topic'
+          - Action: iot:Subscribe
+            Effect: Allow
+            Resource:
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${AWS::StackName}'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/test/topic'
+              - !Sub 'arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/*'
+        Version: '2012-10-17'
+    Type: AWS::IoT::Policy
+  OpenIoTStarPolicy:
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: iot:*
+            Effect: Allow
+            Resource: "*"
+        Version: '2012-10-17'
+    Type: AWS::IoT::Policy
+  IoTPolicyPrincipalAttachment:
+    Properties:
+      PolicyName:
+        Ref: IoTPolicy
+      Principal:
+        Ref: CertificateARN
+    Type: AWS::IoT::PolicyPrincipalAttachment
+  IoTThing:
+    Properties:
+      ThingName: !Sub "${AWS::StackName}"
+    Type: AWS::IoT::Thing
+  IoTThingPrincipalAttachment:
+    Properties:
+      Principal:
+        Ref: CertificateARN
+      ThingName:
+        Ref: IoTThing
+    Type: AWS::IoT::ThingPrincipalAttachment
+  CloudWatchDashboard:
+    Properties:
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 12,
+              "properties": {
+                "sparkline": true,
+                "metrics": [
+                  [ "AWS/IoT", "Throttle.Exceeded", "Protocol", "MQTT", { "id": "m2", "yAxis": "left" } ],
+                  [ ".", "PublishIn.Success", ".", ".", { "id": "m1", "yAxis": "left" } ]
+                ],
+                "timezone": "UTC",
+                "region": "us-east-1",
+                "view": "timeSeries",
+                "stacked": true,
+                "stat": "SampleCount",
+                "period": 600,
+                "annotations": {
+                  "horizontal": [
+                    {
+                      "label": "Alarm Threshold (100)",
+                      "value": 100
+                    },
+                    {
+                      "label": "Alarm Threshold (20)",
+                      "value": 20
+                    }
+                  ]
+                },
+                "liveData": false,
+                "title": "MQTT Throttle"
+              }
+            }
+          ]
+        }
+      DashboardName: !Sub '${AWS::StackName}-Dashboard'
+    Type: AWS::CloudWatch::Dashboard
+  ThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Throttle alarm for AWS IoT Core - Publish Request Per Second per Connection Limit
+      AlarmActions:
+        - !Ref ThrottleAlarmSNSTopic
+      Namespace: AWS/IoT
+      MetricName: Throttle.Exceeded
+      Dimensions:
+        - Name: Protocol
+          Value: MQTT
+      Statistic: SampleCount
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      EvaluationPeriods: 1
+      Period: 60
+      TreatMissingData: missing
+  ThrottleAlarmSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref EmailNotification
+          Protocol: email
+
+
+
+#  IoTTopicRule:
+#    Type: AWS::IoT::TopicRule
+#    Properties:
+#      RuleName: !Sub "${AWS::StackName}"
+#      TopicRulePayload:
+#        Actions:
+#          - Lambda:
+#              FunctionArn: !GetAtt MyLambda.Arn
+#        AwsIotSqlVersion: '2016-03-23'
+#        Sql: !Sub " SELECT * FROM 'topic_2'"
+#        RuleDisabled: false
+#  MyLambda:
+#    Type: AWS::Lambda::Function
+#    Properties:
+#      Runtime: nodejs10.x
+#      Handler: index.handler
+#      Code:
+#        ZipFile: |
+#          exports.handler = async (event) => { console.log(event); return {'statusCode': 200, 'body': "OK"}; }
+#      FunctionName: !Sub "${AWS::StackName}"
+#      Role: !GetAtt MyLambdaRole.Arn
+#  MyLambdaVersion:
+#    Type: AWS::Lambda::Version
+#    DependsOn: MyLambda
+#    Properties:
+#      FunctionName: !Sub "${AWS::StackName}"
+#  MyLambdaRole:
+#    Type: AWS::IAM::Role
+#    Properties:
+#      AssumeRolePolicyDocument:
+#        Statement:
+#          - Action:
+#              - sts:AssumeRole
+#            Effect: Allow
+#            Principal:
+#              Service:
+#                - lambda.amazonaws.com
+#        Version: '2012-10-17'
+#      Path: /
+#      Policies:
+#        - PolicyName: !Sub "${AWS::StackName}"
+#          PolicyDocument:
+#            Version: 2012-10-17
+#            Statement:
+#              - Effect: Allow
+#                Action:
+#                  - logs:CreateLogGroup
+#                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+#              - Effect: Allow
+#                Action:
+#                  - logs:CreateLogStream
+#                  - logs:PutLogEvents
+#                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}:*'
+#  MyLambdaPermission:
+#    Type: AWS::Lambda::Permission
+#    Properties:
+#      Action: lambda:InvokeFunction
+#      FunctionName: !Sub "${AWS::StackName}"
+#      Principal: iot.amazonaws.com
+#      SourceAccount: !Sub "${AWS::AccountId}"
+#      SourceArn: !GetAtt IoTTopicRule.Arn

@@ -1,0 +1,38 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 12,
+      "properties": {
+        "sparkline": true,
+        "metrics": [
+          [ "AWS/IoT", "Throttle.Exceeded", "Protocol", "MQTT", { "id": "m2", "yAxis": "left" } ],
+          [ ".", "PublishIn.Success", ".", ".", { "id": "m1", "yAxis": "left" } ]
+        ],
+        "timezone": "UTC",
+        "region": "us-east-1",
+        "view": "timeSeries",
+        "stacked": true,
+        "stat": "SampleCount",
+        "period": 600,
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Alarm Threshold (100)",
+              "value": 100
+            },
+            {
+              "label": "Alarm Threshold (20)",
+              "value": 20
+            }
+          ]
+        },
+        "liveData": false,
+        "title": "MQTT Throttle"
+      }
+    }
+  ]
+}
